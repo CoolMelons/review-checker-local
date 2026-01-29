@@ -41,7 +41,7 @@
 
 ---
 
-### ✅ 방법 B) GitHub에서 ZIP 다운로드 후 Python으로 실행 (개발환경 필요)
+### ✅ 방법 B) GitHub에서 ZIP 다운로드 후 Python으로 실행
 
 #### 1️⃣ 다운로드
 1) GitHub 페이지에서 **Code → Download ZIP** 클릭  
