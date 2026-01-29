@@ -32,7 +32,7 @@
 
 1️⃣ GitHub 저장소 상단 **Releases**로 이동  
 2️⃣ 최신 버전에서 실행 파일 다운로드  
-- Windows: `ReviewChecker.exe` (또는 제공되는 압축 파일)
+- Windows: `ReviewChecker.exe`
 
 3️⃣ 다운로드한 파일 실행
 
