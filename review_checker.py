@@ -19,7 +19,7 @@ class ReviewCheckerGUI:
     def __init__(self):
         self.root = Tk()
         self.root.title("📋 리뷰 체커")
-        self.root.geometry("900x900")  # 크기 증가
+        self.root.geometry("700x1200")  # 크기 증가
         
         self.driver = None
         self.df = None
