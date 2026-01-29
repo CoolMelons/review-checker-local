@@ -135,8 +135,16 @@ class ReviewCheckerGUI:
         self.progress_var = StringVar(value="")
         Label(self.root, textvariable=self.progress_var, font=("Arial", 9)).pack(pady=5)
         
-        # 종료 버튼
-        Button(self.root, text="종료", command=self.quit_app, width=15).pack(pady=5)
+        # 버튼 프레임 (복사 + 종료)
+        button_frame = Frame(self.root)
+        button_frame.pack(pady=5)
+        
+        Button(button_frame, text="📋 Copy", 
+               command=self.copy_results, width=20,
+               bg="#9C27B0", fg="white").pack(side="left", padx=5)
+        
+        Button(button_frame, text="End", 
+               command=self.quit_app, width=15).pack(side="left", padx=5)
         
     def connect_chrome(self):
         """크롬 연결"""
@@ -1819,6 +1827,26 @@ class ReviewCheckerGUI:
         except Exception as e:
             print(f"  ✗ GG 오류: {e}")
             return "ERROR", ""
+    
+    def copy_results(self):
+        """조회 결과를 클립보드에 복사"""
+        try:
+            # 텍스트 위젯에서 모든 내용 가져오기
+            result_text = self.result_text.get(1.0, "end-1c")
+            
+            if not result_text.strip():
+                messagebox.showwarning("경고", "복사할 결과가 없습니다.\n먼저 리뷰 조회를 완료하세요.")
+                return
+            
+            # 클립보드에 복사
+            self.root.clipboard_clear()
+            self.root.clipboard_append(result_text)
+            self.root.update()  # 클립보드 업데이트
+            
+            messagebox.showinfo("성공", "✅ 조회 결과가 클립보드에 복사되었습니다!\n\n다른 곳에 Ctrl+V로 붙여넣기 하세요.")
+            
+        except Exception as e:
+            messagebox.showerror("오류", f"복사 실패:\n{e}")
     
     def quit_app(self):
         """프로그램 종료"""
