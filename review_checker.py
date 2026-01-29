@@ -18,7 +18,7 @@ REQUIRED_COLS = ["Date", "Area", "Product", "Agency", "Agency Code", "Main Guide
 class ReviewCheckerGUI:
     def __init__(self):
         self.root = Tk()
-        self.root.title("📋 리뷰 체커")
+        self.root.title("📋 Review Checker")
         self.root.geometry("700x1200")  # 크기 증가
         
         self.driver = None
@@ -38,7 +38,7 @@ class ReviewCheckerGUI:
     def setup_ui(self):
         """UI 구성"""
         # 제목
-        Label(self.root, text="📋 리뷰 체커", font=("Arial", 18, "bold")).pack(pady=15)
+        Label(self.root, text="📋 Review Checker", font=("Arial", 18, "bold")).pack(pady=15)
         
         # 1. 크롬 연결
         frame1 = Frame(self.root, relief="solid", borderwidth=1, padx=10, pady=10)
@@ -1866,7 +1866,7 @@ class ReviewCheckerGUI:
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("리뷰 체커 시작")
+    print("Review Checker 시작")
     print("=" * 60)
     print("\n⚠️  먼저 크롬을 디버그 모드로 실행하세요:")
     print("\nWindows:")
