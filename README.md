@@ -22,13 +22,32 @@
 
 ## 🚀 빠른 시작
 
-### 1️⃣ 다운로드
-```bash
-git clone https://github.com/YOUR-USERNAME/review-checker-local.git
-cd review-checker-local
-```
+아래 두 가지 방법 중 편한 방식으로 실행하세요.  
+- **방법 A (추천): Release에서 EXE 다운로드** → 설치/세팅 최소화
+- **방법 B: ZIP 다운로드 후 Python으로 실행** → 개발환경에서 직접 실행
 
-### 2️⃣ 설치
+---
+
+### ✅ 방법 A) Release에서 EXE 다운로드 (가장 쉬움 / 추천)
+
+1️⃣ GitHub 저장소 상단 **Releases**로 이동  
+2️⃣ 최신 버전에서 실행 파일 다운로드  
+- Windows: `ReviewChecker.exe` (또는 제공되는 압축 파일)  
+3️⃣ 다운로드한 파일 실행
+
+> ⚠️ Windows에서 “알 수 없는 앱” 경고가 뜨면  
+> **추가 정보 → 실행**으로 진행하세요.
+
+---
+
+### ✅ 방법 B) GitHub에서 ZIP 다운로드 후 Python으로 실행 (개발환경 필요)
+
+#### 1️⃣ 다운로드
+1) GitHub 페이지에서 **Code → Download ZIP** 클릭  
+2) ZIP 압축 해제  
+3) 압축 해제한 폴더로 이동
+
+#### 2️⃣ 설치
 ```bash
 pip install -r requirements.txt
 ```
@@ -63,7 +82,7 @@ python review_checker.py
 ⭐ 평균 별점: 4.6점
 
 [가이드별 상세]
-  김미정              2팀 /  8팀 ( 25.0%) - 평균 4.5점
+  홍길동              2팀 /  8팀 ( 25.0%) - 평균 4.5점
     └ L                1팀 /  5팀 ( 20.0%)
     └ KK               1팀 /  2팀 ( 50.0%)
     └ TPC              2팀 /  6명 (검색 필요)
