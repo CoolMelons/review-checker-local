@@ -28,18 +28,18 @@ jobs:
     
     - name: Build EXE
       run: |
-        pyinstaller --onefile --windowed --name "Review Checker" review_checker.py
+        pyinstaller --onefile --windowed --name "ReviewChecker" review_checker.py
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4  # 여기가 핵심! v3에서 v4로 변경
       with:
         name: review-checker-exe
-        path: dist/Review Checker.exe
+        path: dist/ReviewChecker.exe
     
     - name: Create Release (if tagged)
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2  # v1에서 v2로 업데이트
       with:
-        files: dist/Review Checker.exe
+        files: dist/ReviewChecker.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
