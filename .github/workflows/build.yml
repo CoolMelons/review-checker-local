@@ -13,10 +13,10 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4  # v3에서 v4로 업데이트
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5  # v4에서 v5로 업데이트
       with:
         python-version: '3.11'
     
@@ -31,14 +31,14 @@ jobs:
         pyinstaller --onefile --windowed --name "리뷰체커" review_checker.py
     
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4  # 여기가 핵심! v3에서 v4로 변경
       with:
         name: review-checker-exe
         path: dist/리뷰체커.exe
     
     - name: Create Release (if tagged)
       if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2  # v1에서 v2로 업데이트
       with:
         files: dist/리뷰체커.exe
       env:
