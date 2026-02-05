@@ -2,15 +2,14 @@ name: Build and Auto-Update ReviewChecker
 
 on:
   push:
-    branches: [ main ] # main 브랜치에 푸시하면 바로 실행
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
-    # 릴리즈에 파일을 쓰기 위해 권한 설정이 꼭 필요합니다!
     permissions:
-      contents: write
+      contents: write # 릴리즈 수정 권한 필수
 
     steps:
     - name: Checkout code
@@ -29,11 +28,11 @@ jobs:
     
     - name: Build EXE
       run: |
-        # 요청하신 대로 review_checker.py를 사용하여 ReviewChecker.exe 빌드
+        # review_checker.py 파일을 사용하여 ReviewChecker.exe 빌드
         pyinstaller --onefile --windowed --name "ReviewChecker" review_checker.py
     
     - name: Upload artifact
-      uses: actions/checkout@v4
+      uses: actions/upload-artifact@v4 # ⬅️ 이 부분을 actions/checkout에서 수정함!
       with:
         name: review-checker-exe
         path: dist/ReviewChecker.exe
@@ -41,14 +40,14 @@ jobs:
     - name: Update Latest Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: "latest" # 태그 상관없이 항상 'latest'라는 이름의 릴리즈에 업데이트
+        tag_name: "latest"
         name: "ReviewChecker 최신 버전 (자동 빌드)"
         body: |
           본 파일은 최신 소스 코드가 push 될 때마다 자동으로 업데이트됩니다.
           마지막 업데이트 일시: ${{ github.event.head_commit.timestamp }}
         draft: false
         prerelease: false
-        files: dist/ReviewChecker.exe
+        files: dist/ReviewChecker.exe # ⬅️ 빌드된 파일을 릴리즈에 올림
         make_latest: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
