@@ -3,7 +3,8 @@ import sys
 import time
 import pandas as pd
 from datetime import datetime, timedelta
-from tkinter import Tk, filedialog, Label, Button, Toplevel, StringVar, messagebox, Frame, Scrollbar, Canvas, Checkbutton, BooleanVar
+from tkinter import Tk, filedialog, Label, Button, Toplevel, StringVar, messagebox, Frame, Scrollbar, Canvas, \
+    Checkbutton, BooleanVar
 from tkinter.ttk import Progressbar
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -25,7 +26,7 @@ class ReviewCheckerGUI:
         self.df = None
 
         # 노쇼 관련
-        self.noshow_codes = set()          # No Show 탭에서 O인 Agency Code들
+        self.noshow_codes = set()
         self.noshow_teams = 0
         self.noshow_people = 0
 
@@ -201,7 +202,8 @@ class ReviewCheckerGUI:
             code_col = None
             for c in df_ns.columns:
                 lc = c.lower()
-                if lc in ["agency code", "booking code", "booking", "order", "order id", "reservation", "reservation code"]:
+                if lc in ["agency code", "booking code", "booking", "order", "order id", "reservation",
+                          "reservation code"]:
                     code_col = c
                     break
                 if "code" in lc and code_col is None:
@@ -337,7 +339,8 @@ class ReviewCheckerGUI:
         result.append(f"👥 (노쇼 제외 후) 총 예약: {stats['total_teams']}팀 {stats['total_people']}명")
 
         reviewed_agencies = [a for a in ['L', 'KK', 'GG'] if stats['agencies'][a]['total'] > 0]
-        result.append(f"   └ 리뷰 조회 대상: {stats['reviewed_total']}팀 {stats['reviewed_people']}명 ({', '.join(reviewed_agencies)})")
+        result.append(
+            f"   └ 리뷰 조회 대상: {stats['reviewed_total']}팀 {stats['reviewed_people']}명 ({', '.join(reviewed_agencies)})")
 
         other_total = stats['total_teams'] - stats['reviewed_total']
         other_people = stats['total_people'] - stats['reviewed_people']
@@ -370,7 +373,8 @@ class ReviewCheckerGUI:
                     agency_stat = guide_stat['agencies'][agency_code]
                     if agency_stat['total'] > 0:
                         agency_pct = (agency_stat['checked'] / agency_stat['total']) * 100
-                        agency_avg = sum(agency_stat['ratings']) / len(agency_stat['ratings']) if agency_stat['ratings'] else 0
+                        agency_avg = sum(agency_stat['ratings']) / len(agency_stat['ratings']) if agency_stat[
+                            'ratings'] else 0
                         line = f"    └ {agency_code:15} {agency_stat['checked']:2}팀 / {agency_stat['total']:2}팀 ({agency_pct:5.1f}%)"
                         if agency_avg > 0:
                             line += f" - 평균 {agency_avg:.1f}점"
@@ -426,9 +430,9 @@ class ReviewCheckerGUI:
         filtered_df = pd.DataFrame()
         for date_val, product, guide in selected_guides:
             mask = (
-                (self.df['Date'] == date_val) &
-                (self.df['Product'] == product) &
-                (self.df['Main Guide'] == guide)
+                    (self.df['Date'] == date_val) &
+                    (self.df['Product'] == product) &
+                    (self.df['Main Guide'] == guide)
             )
             filtered_df = pd.concat([filtered_df, self.df[mask]])
 
@@ -692,8 +696,8 @@ class ReviewCheckerGUI:
                     final_msg = (
                         f"✅ 완료!\n\n"
                         f"(No Show O 제외)\n"
-                        f"리뷰 확인: {stats['total_checked']}/{stats['reviewed_total']}팀 ({stats['total_checked']/stats['reviewed_total']*100:.1f}%)\n"
-                        f"평균 별점: {sum(stats['total_ratings'])/len(stats['total_ratings']):.1f}점"
+                        f"리뷰 확인: {stats['total_checked']}/{stats['reviewed_total']}팀 ({stats['total_checked'] / stats['reviewed_total'] * 100:.1f}%)\n"
+                        f"평균 별점: {sum(stats['total_ratings']) / len(stats['total_ratings']):.1f}점"
                     )
                 else:
                     final_msg = (
@@ -779,7 +783,8 @@ class ReviewCheckerGUI:
                 time.sleep(1)
 
                 popup_start_input = WebDriverWait(self.driver, 5).until(
-                    EC.presence_of_element_located((By.XPATH, '/html/body/div[3]/div/div/div/div/div[1]/div[1]/div[1]/div/input'))
+                    EC.presence_of_element_located(
+                        (By.XPATH, '/html/body/div[3]/div/div/div/div/div[1]/div[1]/div[1]/div/input'))
                 )
                 popup_start_input.click()
                 popup_start_input.send_keys(Keys.CONTROL + 'a')
@@ -796,7 +801,8 @@ class ReviewCheckerGUI:
                 time.sleep(0.3)
 
                 search_btn = WebDriverWait(self.driver, 5).until(
-                    EC.element_to_be_clickable((By.XPATH, '//*[@id="klook-content"]/div/div[1]/div[1]/div/div[2]/button[1]'))
+                    EC.element_to_be_clickable(
+                        (By.XPATH, '//*[@id="klook-content"]/div/div[1]/div[1]/div/div[2]/button[1]'))
                 )
                 search_btn.click()
                 time.sleep(3)
@@ -858,53 +864,191 @@ class ReviewCheckerGUI:
             return reviews
 
     def collect_gg_reviews(self, date):
+        """
+        GG 리뷰 수집 - 두 번째 코드 스타일 반영한 개선 버전
+        """
         reviews = {}
         try:
             from datetime import timedelta
 
-            print(f"\n🔍 GG 리뷰 수집 중... (날짜: {date.strftime('%Y-%m-%d')})")
+            # 날짜 정규화 (pandas Timestamp -> datetime)
+            if hasattr(date, 'to_pydatetime'):
+                date = date.to_pydatetime()
+
+            date_str = date.strftime('%Y-%m-%d')
+            print(f"\n🔍 GG 리뷰 수집 중... (날짜: {date_str})")
 
             self.driver.get("https://supplier.getyourguide.com/performance/reviews")
             time.sleep(3)
 
+            # More Filters 버튼 클릭 (여러 방법 시도)
+            more_filters_clicked = False
+
+            # 방법 1: data-testid 사용 (가장 안정적)
             try:
-                more_filters = WebDriverWait(self.driver, 10).until(
-                    EC.element_to_be_clickable((By.XPATH, '//*[@id="__nuxt"]/div/div/main/div[1]/div/div[2]/div[1]/div/div[3]/button'))
+                more_filters = WebDriverWait(self.driver, 5).until(
+                    EC.element_to_be_clickable((By.XPATH, '//button[@data-testid="filters-toggle-second-row"]'))
                 )
                 more_filters.click()
                 time.sleep(1)
+                more_filters_clicked = True
+                print("  ✓ More Filters 열림 (방법1: data-testid)")
             except:
                 pass
 
-            try:
-                prev_day = date - timedelta(days=1)
-                prev_day_num = prev_day.day
-                curr_day_num = date.day
+            # 방법 2: 업데이트된 XPath (2026-02-15 기준)
+            if not more_filters_clicked:
+                try:
+                    more_filters = self.driver.find_element(By.XPATH,
+                                                            '//*[@id="__nuxt"]/div/div/main/div[1]/div/div[2]/div[1]/div/div[3]/div/button')
+                    more_filters.click()
+                    time.sleep(1)
+                    more_filters_clicked = True
+                    print("  ✓ More Filters 열림 (방법2: 업데이트된 XPath)")
+                except:
+                    pass
 
-                calendar_btn = self.driver.find_element(
-                    By.XPATH,
-                    '//*[@id="date-range"]/span/span/span'
-                )
-                calendar_btn.click()
-                time.sleep(1)
+            # 방법 3: 텍스트로 찾기 (대소문자 무관)
+            if not more_filters_clicked:
+                try:
+                    more_filters = WebDriverWait(self.driver, 5).until(
+                        EC.element_to_be_clickable((By.XPATH,
+                                                    '//button[contains(translate(text(), "MOREFILTS", "morefilts"), "more filter")]'))
+                    )
+                    more_filters.click()
+                    time.sleep(1)
+                    more_filters_clicked = True
+                    print("  ✓ More Filters 열림 (방법3: 텍스트)")
+                except:
+                    pass
 
-                prev_day_cell = self.driver.find_element(
-                    By.XPATH,
-                    f'//span[@class="p-datepicker-day" and text()="{prev_day_num}"]'
-                )
-                prev_day_cell.click()
-                time.sleep(0.3)
+            # 방법 4: 정확한 텍스트 매칭
+            if not more_filters_clicked:
+                try:
+                    more_filters = self.driver.find_element(By.XPATH,
+                                                            '//button[text()="More filters" or contains(text(), "More filters")]')
+                    more_filters.click()
+                    time.sleep(1)
+                    more_filters_clicked = True
+                    print("  ✓ More Filters 열림 (방법4: 정확한 텍스트)")
+                except:
+                    pass
 
-                curr_day_cell = self.driver.find_element(
-                    By.XPATH,
-                    f'//span[@class="p-datepicker-day" and text()="{curr_day_num}"]'
-                )
-                curr_day_cell.click()
-                time.sleep(5)
+            # 방법 5: 구 XPath (하위 호환)
+            if not more_filters_clicked:
+                try:
+                    more_filters = self.driver.find_element(By.XPATH,
+                                                            '//*[@id="__nuxt"]/div/div/main/div[1]/div/div[2]/div[1]/div/div[3]/button')
+                    more_filters.click()
+                    time.sleep(1)
+                    more_filters_clicked = True
+                    print("  ✓ More Filters 열림 (방법5: 구 XPath)")
+                except:
+                    pass
 
-            except Exception as e:
-                print(f"  ⚠ 날짜 선택 실패: {e}")
+            # 방법 6: CSS 선택자로 button 전체 검색
+            if not more_filters_clicked:
+                try:
+                    buttons = self.driver.find_elements(By.TAG_NAME, 'button')
+                    for btn in buttons:
+                        btn_text = btn.text.strip().lower()
+                        if 'more' in btn_text and 'filter' in btn_text:
+                            btn.click()
+                            time.sleep(1)
+                            more_filters_clicked = True
+                            print(f"  ✓ More Filters 열림 (방법6: 전체 버튼 검색)")
+                            break
+                except:
+                    pass
 
+            if not more_filters_clicked:
+                print("  ⚠ More Filters 버튼 찾기 실패 - 날짜 필터 사용 불가")
+                print("  💡 현재 페이지의 모든 버튼 출력:")
+                try:
+                    buttons = self.driver.find_elements(By.TAG_NAME, 'button')
+                    for i, btn in enumerate(buttons[:10]):  # 처음 10개만
+                        print(f"     버튼{i + 1}: '{btn.text.strip()}'")
+                except:
+                    pass
+
+            # 날짜 필터 설정
+            if more_filters_clicked:
+                try:
+                    prev_day = date - timedelta(days=1)
+
+                    # 캘린더 버튼 클릭
+                    calendar_btn = WebDriverWait(self.driver, 5).until(
+                        EC.element_to_be_clickable((By.XPATH, '//*[@id="date-range"]/span/span/span'))
+                    )
+                    calendar_btn.click()
+                    time.sleep(1.5)
+
+                    # 월 변경이 필요한지 확인 (전날이 이전 달인 경우)
+                    if prev_day.month != date.month:
+                        try:
+                            # 이전 달로 이동
+                            prev_month_btn = self.driver.find_element(
+                                By.XPATH,
+                                '//button[contains(@class, "p-datepicker-prev")]'
+                            )
+                            prev_month_btn.click()
+                            time.sleep(0.5)
+                            print(f"  ✓ 이전 달로 이동: {prev_day.strftime('%Y-%m')}")
+                        except Exception as e:
+                            print(f"  ⚠ 이전 달 이동 실패: {e}")
+
+                    # 전날 선택 (활성화된 날짜만)
+                    try:
+                        prev_day_cells = self.driver.find_elements(
+                            By.XPATH,
+                            f'//span[@class="p-datepicker-day" and text()="{prev_day.day}" and not(contains(@class, "p-disabled"))]'
+                        )
+                        if prev_day_cells:
+                            prev_day_cells[0].click()
+                            time.sleep(0.5)
+                            print(f"  ✓ 시작일 선택: {prev_day.strftime('%Y-%m-%d')}")
+                        else:
+                            print(f"  ⚠ 전날 ({prev_day.day}일) 클릭 가능한 셀 없음")
+                    except Exception as e:
+                        print(f"  ⚠ 전날 선택 실패: {e}")
+
+                    # 다시 현재 달로 (필요시)
+                    if prev_day.month != date.month:
+                        try:
+                            next_month_btn = self.driver.find_element(
+                                By.XPATH,
+                                '//button[contains(@class, "p-datepicker-next")]'
+                            )
+                            next_month_btn.click()
+                            time.sleep(0.5)
+                            print(f"  ✓ 현재 달로 복귀: {date.strftime('%Y-%m')}")
+                        except:
+                            pass
+
+                    # 당일 선택
+                    try:
+                        curr_day_cells = self.driver.find_elements(
+                            By.XPATH,
+                            f'//span[@class="p-datepicker-day" and text()="{date.day}" and not(contains(@class, "p-disabled"))]'
+                        )
+                        if curr_day_cells:
+                            curr_day_cells[0].click()
+                            time.sleep(0.5)
+                            print(f"  ✓ 종료일 선택: {date_str}")
+                        else:
+                            print(f"  ⚠ 당일 ({date.day}일) 클릭 가능한 셀 없음")
+                    except Exception as e:
+                        print(f"  ⚠ 당일 선택 실패: {e}")
+
+                    # 필터 적용 대기
+                    time.sleep(5)
+
+                except Exception as e:
+                    print(f"  ⚠ 날짜 필터 설정 실패: {e}")
+            else:
+                print("  ⚠ 날짜 필터 없이 진행 (전체 리뷰 검색)")
+
+            # 리뷰 수집
             page_num = 1
             while page_num <= 10:
                 try:
@@ -930,13 +1074,16 @@ class ReviewCheckerGUI:
                             code = elem.text.strip()
                             if code.startswith("GYG"):
                                 try:
-                                    parent = elem.find_element(By.XPATH, './ancestor::div[contains(@class, "c-review") or contains(@class, "review-card") or @role="article"][1]')
-                                    rating_elem = parent.find_element(By.XPATH, './/span[@class="c-user-rating__rating"]')
+                                    parent = elem.find_element(By.XPATH,
+                                                               './ancestor::div[contains(@class, "c-review") or contains(@class, "review-card") or @role="article"][1]')
+                                    rating_elem = parent.find_element(By.XPATH,
+                                                                      './/span[@class="c-user-rating__rating"]')
                                     rating = rating_elem.text.strip()
                                     reviews[code] = rating
                                 except:
                                     try:
-                                        rating_elem = elem.find_element(By.XPATH, './preceding::span[@class="c-user-rating__rating"][1]')
+                                        rating_elem = elem.find_element(By.XPATH,
+                                                                        './preceding::span[@class="c-user-rating__rating"][1]')
                                         rating = rating_elem.text.strip()
                                         reviews[code] = rating
                                     except:
@@ -994,7 +1141,8 @@ class ReviewCheckerGUI:
 
             try:
                 result_div = WebDriverWait(self.driver, 5).until(
-                    EC.presence_of_element_located((By.XPATH, '//*[@id="defaultLayout"]/div/section[2]/div[2]/div[2]/div/div/div[1]/div/div/div[1]/div[2]'))
+                    EC.presence_of_element_located((By.XPATH,
+                                                    '//*[@id="defaultLayout"]/div/section[2]/div[2]/div[2]/div/div/div[1]/div/div/div[1]/div[2]'))
                 )
                 result_text = result_div.text
 
