@@ -39,6 +39,9 @@ class ReviewCheckerGUI:
         self.gg_setup_done = False
         self.gg_current_date = None
 
+        # ✅ 상세 로그를 GUI에도 쌓기 위한 버퍼
+        self.detail_lines = []
+
         self.setup_ui()
 
     def setup_ui(self):
@@ -118,7 +121,7 @@ class ReviewCheckerGUI:
 
         self.result_text = Text(
             result_scroll_frame,
-            height=10,
+            height=18,
             width=60,
             yscrollcommand=result_scrollbar.set,
             font=("Consolas", 9),
@@ -139,6 +142,21 @@ class ReviewCheckerGUI:
 
         Button(button_frame, text="End",
                command=self.quit_app, width=15).pack(side="left", padx=5)
+
+    # ✅ print 대신, GUI + CMD 동시 출력용 로거
+    def log(self, msg=""):
+        try:
+            line = str(msg)
+            print(line)
+            self.detail_lines.append(line)
+
+            # GUI에도 append
+            if hasattr(self, "result_text") and self.result_text is not None:
+                self.result_text.insert("end", line + "\n")
+                self.result_text.see("end")
+                self.root.update_idletasks()
+        except:
+            pass
 
     def connect_chrome(self):
         try:
@@ -173,7 +191,6 @@ class ReviewCheckerGUI:
             if str(name).strip().lower() in ["no show", "noshow", "no_show", "no-show"]:
                 noshow_sheet_name = name
                 break
-            # 한국어 등 변형 대응
             if "no show" in str(name).strip().lower():
                 noshow_sheet_name = name
                 break
@@ -198,7 +215,6 @@ class ReviewCheckerGUI:
             df_ns = xls[noshow_sheet_name].copy()
             df_ns.columns = [str(c).strip() for c in df_ns.columns]
 
-            # 코드 컬럼 후보
             code_col = None
             for c in df_ns.columns:
                 lc = c.lower()
@@ -209,19 +225,15 @@ class ReviewCheckerGUI:
                 if "code" in lc and code_col is None:
                     code_col = c
 
-            # O/X 컬럼 후보
             flag_col = None
             for c in df_ns.columns:
                 lc = c.lower().replace(" ", "")
                 if lc in ["noshow", "no_show", "no-show"]:
                     flag_col = c
                     break
-                # 그냥 첫 번째/두 번째 형태로 오는 경우도 있어서 텍스트 힌트
                 if "show" in lc and flag_col is None:
                     flag_col = c
 
-            # 만약 O/X가 특정 컬럼 없이 코드만 O인 행으로 들어오는 경우도 대비
-            # -> flag_col이 없으면, df_ns 전체에서 'O'가 있는 행의 code_col을 잡는 방식
             if code_col is not None:
                 if flag_col is not None:
                     for _, r in df_ns.iterrows():
@@ -229,11 +241,9 @@ class ReviewCheckerGUI:
                         flag = str(r.get(flag_col, "")).strip().upper()
                         if not code:
                             continue
-                        # 'O'만 노쇼로 인정 (X는 무시)
                         if flag == "O":
                             noshow_codes.add(code)
                 else:
-                    # flag_col이 없으면, 행 전체에 'O'가 포함된 경우를 노쇼로 보고 code_col 추출
                     for _, r in df_ns.iterrows():
                         code = str(r.get(code_col, "")).strip()
                         if not code:
@@ -259,17 +269,14 @@ class ReviewCheckerGUI:
         try:
             df, noshow_codes, main_sheet, noshow_sheet = self.load_excel_with_noshow(file_path)
 
-            # 서울 필터링
             df = df[df["Area"].astype(str).str.strip().str.lower() == "seoul"].copy()
 
-            # 데이터 준비
             df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
             df["Agency"] = df["Agency"].astype(str).str.strip()
             df["Agency Code"] = df["Agency Code"].astype(str).str.strip()
             if "People" in df.columns:
                 df["People"] = pd.to_numeric(df["People"], errors="coerce").fillna(0).astype(int)
 
-            # No Show 적용 (O인 코드 제외)
             self.noshow_codes = set([str(c).strip() for c in noshow_codes if str(c).strip()])
             if self.noshow_codes:
                 df["__NOSHOW__"] = df["Agency Code"].astype(str).str.strip().isin(self.noshow_codes)
@@ -325,41 +332,44 @@ class ReviewCheckerGUI:
         messagebox.showinfo("완료", f"{len(self.guide_groups)}개 가이드 그룹을 찾았습니다.\n(No Show O는 자동 제외됨)")
 
     def display_results(self, stats):
+        # ✅ 최종 출력은 "상세 로그 + 요약" 형태로 재구성
         self.result_text.delete(1.0, "end")
 
-        result = []
-        result.append("=" * 60)
-        result.append("📈 전체 통계")
-        result.append("=" * 60)
+        out = []
+        out.append("[상세 로그]")
+        out.append("-" * 60)
+        out.extend(self.detail_lines)
+        out.append("\n" + "=" * 60)
+        out.append("📈 전체 통계")
+        out.append("=" * 60)
 
-        # 노쇼 제외 정보 표시
         if stats.get("noshow_total", 0) > 0:
-            result.append(f"🚫 No Show(O) 제외: {stats['noshow_total']}팀 {stats['noshow_people']}명")
+            out.append(f"🚫 No Show(O) 제외: {stats['noshow_total']}팀 {stats['noshow_people']}명")
 
-        result.append(f"👥 (노쇼 제외 후) 총 예약: {stats['total_teams']}팀 {stats['total_people']}명")
+        out.append(f"👥 (노쇼 제외 후) 총 예약: {stats['total_teams']}팀 {stats['total_people']}명")
 
         reviewed_agencies = [a for a in ['L', 'KK', 'GG'] if stats['agencies'][a]['total'] > 0]
-        result.append(
+        out.append(
             f"   └ 리뷰 조회 대상: {stats['reviewed_total']}팀 {stats['reviewed_people']}명 ({', '.join(reviewed_agencies)})")
 
         other_total = stats['total_teams'] - stats['reviewed_total']
         other_people = stats['total_people'] - stats['reviewed_people']
         if other_total > 0:
             other_agencies = list(stats['other_agencies'].keys())
-            result.append(f"   └ 조회 제외: {other_total}팀 {other_people}명 ({', '.join(other_agencies)})")
+            out.append(f"   └ 조회 제외: {other_total}팀 {other_people}명 ({', '.join(other_agencies)})")
 
         if stats['reviewed_total'] > 0:
             pct = (stats['total_checked'] / stats['reviewed_total']) * 100
-            result.append(f"\n✓ 리뷰 확인: {stats['total_checked']}팀 / {stats['reviewed_total']}팀 ({pct:.1f}%)")
+            out.append(f"\n✓ 리뷰 확인: {stats['total_checked']}팀 / {stats['reviewed_total']}팀 ({pct:.1f}%)")
 
         if stats['total_ratings']:
             avg_all = sum(stats['total_ratings']) / len(stats['total_ratings'])
-            result.append(f"⭐ 평균 별점: {avg_all:.1f}점\n")
+            out.append(f"⭐ 평균 별점: {avg_all:.1f}점\n")
         else:
-            result.append("⭐ 평균 별점: N/A\n")
+            out.append("⭐ 평균 별점: N/A\n")
 
-        result.append("\n[가이드별 상세]")
-        result.append("-" * 60)
+        out.append("\n[가이드별 상세]")
+        out.append("-" * 60)
         for guide_name, guide_stat in stats['guides'].items():
             if guide_stat['total'] > 0:
                 pct = (guide_stat['checked'] / guide_stat['total']) * 100
@@ -367,7 +377,7 @@ class ReviewCheckerGUI:
                 line = f"  {guide_name:15} {guide_stat['checked']:2}팀 / {guide_stat['total']:2}팀 ({pct:5.1f}%)"
                 if avg > 0:
                     line += f" - 평균 {avg:.1f}점"
-                result.append(line)
+                out.append(line)
 
                 for agency_code in ['L', 'KK', 'GG']:
                     agency_stat = guide_stat['agencies'][agency_code]
@@ -378,15 +388,15 @@ class ReviewCheckerGUI:
                         line = f"    └ {agency_code:15} {agency_stat['checked']:2}팀 / {agency_stat['total']:2}팀 ({agency_pct:5.1f}%)"
                         if agency_avg > 0:
                             line += f" - 평균 {agency_avg:.1f}점"
-                        result.append(line)
+                        out.append(line)
 
                 for other_agency, bookings in guide_stat['other_agencies'].items():
                     if len(bookings) > 0:
                         total_people = sum(b['people'] for b in bookings)
-                        result.append(f"    └ {other_agency:15} {len(bookings):2}팀 / {total_people:3}명 (검색 필요)")
+                        out.append(f"    └ {other_agency:15} {len(bookings):2}팀 / {total_people:3}명 (검색 필요)")
 
-        result.append("\n[Agency별 상세]")
-        result.append("-" * 60)
+        out.append("\n[Agency별 상세]")
+        out.append("-" * 60)
         for agency_code, agency_stat in stats['agencies'].items():
             if agency_stat['total'] > 0:
                 pct = (agency_stat['checked'] / agency_stat['total']) * 100
@@ -394,18 +404,19 @@ class ReviewCheckerGUI:
                 line = f"  {agency_code:15} {agency_stat['checked']:2}팀 / {agency_stat['total']:2}팀 ({pct:5.1f}%)"
                 if avg > 0:
                     line += f" - 평균 {avg:.1f}점"
-                result.append(line)
+                out.append(line)
 
         if stats['other_agencies']:
-            result.append("\n[개별 조회 필요 에이전시]")
-            result.append("-" * 60)
+            out.append("\n[개별 조회 필요 에이전시]")
+            out.append("-" * 60)
             for agency_code, agency_data in stats['other_agencies'].items():
-                result.append(f"  {agency_code:15} {agency_data['total']:2}팀")
+                out.append(f"  {agency_code:15} {agency_data['total']:2}팀")
                 for booking in agency_data['bookings']:
-                    result.append(f"    · {booking['code']} ({booking['guide']})")
+                    out.append(f"    · {booking['code']} ({booking['guide']})")
 
-        result.append("\n" + "=" * 60)
-        self.result_text.insert("end", "\n".join(result))
+        out.append("\n" + "=" * 60)
+        self.result_text.insert("end", "\n".join(out))
+        self.result_text.see("end")
 
     def toggle_all(self):
         select_all = self.select_all_var.get()
@@ -443,7 +454,6 @@ class ReviewCheckerGUI:
             messagebox.showerror("오류", "먼저 크롬을 연결하세요!")
             return
 
-        # 레거시: df가 None이면 여기서 파일 선택
         if df is None:
             file_path = filedialog.askopenfilename(
                 title="엑셀 파일 선택",
@@ -467,7 +477,6 @@ class ReviewCheckerGUI:
                 if "People" in df.columns:
                     df["People"] = pd.to_numeric(df["People"], errors="coerce").fillna(0).astype(int)
 
-                # No Show O 제외
                 self.noshow_codes = set([str(c).strip() for c in noshow_codes if str(c).strip()])
                 if self.noshow_codes:
                     df["__NOSHOW__"] = df["Agency Code"].astype(str).str.strip().isin(self.noshow_codes)
@@ -484,6 +493,12 @@ class ReviewCheckerGUI:
                 return
 
         try:
+            # ✅ 시작 시 로그/창 초기화
+            self.detail_lines = []
+            self.result_text.delete(1.0, "end")
+            self.log("📊 리뷰 조회 시작")
+            self.log("=" * 80)
+
             df["Review_Status"] = ""
             df["Rating"] = ""
             df["Check"] = ""
@@ -516,20 +531,16 @@ class ReviewCheckerGUI:
             progress_bar = progress_window.progress_bar
             progress_label = progress_window.label
 
-            print("\n" + "=" * 80)
-            print("📊 리뷰 조회 시작".center(80))
-            print("=" * 80 + "\n")
-
             unique_dates = df['Date'].unique()
             all_reviews = {'L': {}, 'KK': {}, 'GG': {}}
 
-            print("=" * 80)
-            print("1단계: 날짜별 리뷰 수집")
-            print("=" * 80)
+            self.log("=" * 80)
+            self.log("1단계: 날짜별 리뷰 수집")
+            self.log("=" * 80)
 
             for date_val in unique_dates:
-                print(f"\n📅 {pd.to_datetime(date_val).strftime('%Y-%m-%d')}")
-                print("-" * 60)
+                self.log(f"\n📅 {pd.to_datetime(date_val).strftime('%Y-%m-%d')}")
+                self.log("-" * 60)
 
                 klook_reviews = self.collect_klook_reviews(date_val)
                 all_reviews['L'][date_val] = klook_reviews
@@ -539,9 +550,9 @@ class ReviewCheckerGUI:
                 gg_reviews = self.collect_gg_reviews(date_val)
                 all_reviews['GG'][date_val] = gg_reviews
 
-            print("\n" + "=" * 80)
-            print("2단계: 예약번호 매칭 및 출력")
-            print("=" * 80)
+            self.log("\n" + "=" * 80)
+            self.log("2단계: 예약번호 매칭 및 출력")
+            self.log("=" * 80)
 
             grouped = df.groupby(['Date', 'Product', 'Main Guide'])
             processed_count = 0
@@ -552,18 +563,18 @@ class ReviewCheckerGUI:
             for (date_val, product, guide), group in grouped:
                 if current_date != date_val:
                     if current_date is not None:
-                        print()
-                    print(f"\n{'=' * 80}")
-                    print(f"📅 {date_val.strftime('%Y-%m-%d (%A)')}")
-                    print(f"{'=' * 80}\n")
+                        self.log("")
+                    self.log(f"\n{'=' * 80}")
+                    self.log(f"📅 {date_val.strftime('%Y-%m-%d (%A)')}")
+                    self.log(f"{'=' * 80}\n")
                     current_date = date_val
 
                 people_count = group['People'].sum() if 'People' in group.columns else 0
                 team_count = len(group)
 
-                print(f"📍 투어: {product}")
-                print(f"👤 가이드: {guide}")
-                print(f"👥 총: {team_count}팀 {people_count}명\n")
+                self.log(f"📍 투어: {product}")
+                self.log(f"👤 가이드: {guide}")
+                self.log(f"👥 총: {team_count}팀 {people_count}명\n")
 
                 stats['total_teams'] += team_count
                 stats['total_people'] += people_count
@@ -587,8 +598,8 @@ class ReviewCheckerGUI:
                     if len(agency_group) == 0:
                         continue
 
-                    print(f"[{agency}]")
-                    print("-" * 60)
+                    self.log(f"[{agency}]")
+                    self.log("-" * 60)
 
                     current_checked = 0
                     current_ratings = []
@@ -639,12 +650,12 @@ class ReviewCheckerGUI:
                                 stats['guides'][guide]['ratings'].append(rating_val)
                                 stats['guides'][guide]['agencies'][agency]['ratings'].append(rating_val)
                                 current_ratings.append(rating_val)
-                                print(f"  ✓ {code} ({rating}점)")
+                                self.log(f"  ✓ {code} ({rating}점)")
                             else:
-                                print(f"  ✓ {code}")
+                                self.log(f"  ✓ {code}")
                         else:
                             df.at[idx, "Check"] = "✗"
-                            print(f"  ✗ {code}")
+                            self.log(f"  ✗ {code}")
 
                         time.sleep(0.3)
 
@@ -652,11 +663,10 @@ class ReviewCheckerGUI:
                     if current_total > 0:
                         pct = (current_checked / current_total) * 100
                         avg = sum(current_ratings) / len(current_ratings) if current_ratings else 0
-                        print(f"\n  📊 {current_checked}/{current_total}팀 ({pct:.1f}%)", end="")
                         if avg > 0:
-                            print(f" - 평균 {avg:.1f}점\n")
+                            self.log(f"\n  📊 {current_checked}/{current_total}팀 ({pct:.1f}%) - 평균 {avg:.1f}점\n")
                         else:
-                            print("\n")
+                            self.log(f"\n  📊 {current_checked}/{current_total}팀 ({pct:.1f}%)\n")
 
                 other_group = group[~group['Agency'].isin(['L', 'KK', 'GG'])]
                 for idx, row in other_group.iterrows():
@@ -689,6 +699,8 @@ class ReviewCheckerGUI:
                     })
 
             progress_window.window.destroy()
+
+            # ✅ 최종: 상세 로그 + 통계 함께 출력
             self.display_results(stats)
 
             if stats['reviewed_total'] > 0:
@@ -710,11 +722,11 @@ class ReviewCheckerGUI:
 
             self.progress_var.set("✅ 완료!")
             messagebox.showinfo("완료", final_msg)
-            print(f"✅ 조회 완료!\n")
+            self.log("✅ 조회 완료!\n")
 
         except Exception as e:
             self.progress_var.set(f"❌ 오류: {str(e)}")
-            print(f"오류 발생: {e}")
+            self.log(f"오류 발생: {e}")
             import traceback
             traceback.print_exc()
             messagebox.showerror("오류", f"처리 중 오류 발생:\n{e}")
@@ -748,7 +760,7 @@ class ReviewCheckerGUI:
     def collect_klook_reviews(self, date):
         reviews = {}
         try:
-            print(f"\n🔍 KLOOK 리뷰 수집 중... (날짜: {date.strftime('%Y-%m-%d')})")
+            self.log(f"\n🔍 KLOOK 리뷰 수집 중... (날짜: {date.strftime('%Y-%m-%d')})")
 
             self.driver.get("https://merchant.klook.com/reviews")
             time.sleep(2)
@@ -808,7 +820,7 @@ class ReviewCheckerGUI:
                 time.sleep(3)
 
             except Exception as e:
-                print(f"  ⚠ 날짜 필터 설정 실패: {e}")
+                self.log(f"  ⚠ 날짜 필터 설정 실패: {e}")
 
             page_num = 1
             while page_num <= 20:
@@ -828,7 +840,7 @@ class ReviewCheckerGUI:
                         except:
                             continue
 
-                    print(f"  → 페이지 {page_num}: {len(rows)}개 리뷰")
+                    self.log(f"  → 페이지 {page_num}: {len(rows)}개 리뷰")
 
                     try:
                         next_btn = self.driver.find_element(
@@ -844,11 +856,11 @@ class ReviewCheckerGUI:
                 except Exception:
                     break
 
-            print(f"  ✓ KLOOK: {len(reviews)}개 리뷰 수집 완료")
+            self.log(f"  ✓ KLOOK: {len(reviews)}개 리뷰 수집 완료")
             return reviews
 
         except Exception as e:
-            print(f"  ✗ KLOOK 수집 실패: {e}")
+            self.log(f"  ✗ KLOOK 수집 실패: {e}")
             import traceback
             traceback.print_exc()
             return reviews
@@ -856,35 +868,36 @@ class ReviewCheckerGUI:
     def collect_kkday_reviews(self, date):
         reviews = {}
         try:
-            print(f"\n🔍 KKDAY 리뷰 수집 중... (날짜: {date.strftime('%Y-%m-%d')})")
-            print(f"  ⚠ KKDAY는 개별 조회 방식 유지")
+            self.log(f"\n🔍 KKDAY 리뷰 수집 중... (날짜: {date.strftime('%Y-%m-%d')})")
+            self.log(f"  ⚠ KKDAY는 개별 조회 방식 유지")
             return reviews
         except Exception as e:
-            print(f"  ✗ KKDAY 수집 실패: {e}")
+            self.log(f"  ✗ KKDAY 수집 실패: {e}")
             return reviews
 
     def collect_gg_reviews(self, date):
         """
-        GG 리뷰 수집 - 두 번째 코드 스타일 반영한 개선 버전
+        ✅ GG 리뷰 수집
+        - More Filters 열기 시도 여러 방식 유지
+        - ✅ 날짜 범위를 (date-1) ~ (date+1) 로 변경 (-1, +1)
         """
         reviews = {}
         try:
-            from datetime import timedelta
-
-            # 날짜 정규화 (pandas Timestamp -> datetime)
             if hasattr(date, 'to_pydatetime'):
                 date = date.to_pydatetime()
 
+            # ✅ -1 / +1 범위로 변경
+            start_day = date - timedelta(days=1)
+            end_day = date + timedelta(days=1)
+
             date_str = date.strftime('%Y-%m-%d')
-            print(f"\n🔍 GG 리뷰 수집 중... (날짜: {date_str})")
+            self.log(f"\n🔍 GG 리뷰 수집 중... (기준 날짜: {date_str}, 범위: {start_day.strftime('%Y-%m-%d')} ~ {end_day.strftime('%Y-%m-%d')})")
 
             self.driver.get("https://supplier.getyourguide.com/performance/reviews")
             time.sleep(3)
 
-            # More Filters 버튼 클릭 (여러 방법 시도)
             more_filters_clicked = False
 
-            # 방법 1: data-testid 사용 (가장 안정적)
             try:
                 more_filters = WebDriverWait(self.driver, 5).until(
                     EC.element_to_be_clickable((By.XPATH, '//button[@data-testid="filters-toggle-second-row"]'))
@@ -892,11 +905,10 @@ class ReviewCheckerGUI:
                 more_filters.click()
                 time.sleep(1)
                 more_filters_clicked = True
-                print("  ✓ More Filters 열림 (방법1: data-testid)")
+                self.log("  ✓ More Filters 열림 (방법1: data-testid)")
             except:
                 pass
 
-            # 방법 2: 업데이트된 XPath (2026-02-15 기준)
             if not more_filters_clicked:
                 try:
                     more_filters = self.driver.find_element(By.XPATH,
@@ -904,11 +916,10 @@ class ReviewCheckerGUI:
                     more_filters.click()
                     time.sleep(1)
                     more_filters_clicked = True
-                    print("  ✓ More Filters 열림 (방법2: 업데이트된 XPath)")
+                    self.log("  ✓ More Filters 열림 (방법2: 업데이트된 XPath)")
                 except:
                     pass
 
-            # 방법 3: 텍스트로 찾기 (대소문자 무관)
             if not more_filters_clicked:
                 try:
                     more_filters = WebDriverWait(self.driver, 5).until(
@@ -918,11 +929,10 @@ class ReviewCheckerGUI:
                     more_filters.click()
                     time.sleep(1)
                     more_filters_clicked = True
-                    print("  ✓ More Filters 열림 (방법3: 텍스트)")
+                    self.log("  ✓ More Filters 열림 (방법3: 텍스트)")
                 except:
                     pass
 
-            # 방법 4: 정확한 텍스트 매칭
             if not more_filters_clicked:
                 try:
                     more_filters = self.driver.find_element(By.XPATH,
@@ -930,11 +940,10 @@ class ReviewCheckerGUI:
                     more_filters.click()
                     time.sleep(1)
                     more_filters_clicked = True
-                    print("  ✓ More Filters 열림 (방법4: 정확한 텍스트)")
+                    self.log("  ✓ More Filters 열림 (방법4: 정확한 텍스트)")
                 except:
                     pass
 
-            # 방법 5: 구 XPath (하위 호환)
             if not more_filters_clicked:
                 try:
                     more_filters = self.driver.find_element(By.XPATH,
@@ -942,11 +951,10 @@ class ReviewCheckerGUI:
                     more_filters.click()
                     time.sleep(1)
                     more_filters_clicked = True
-                    print("  ✓ More Filters 열림 (방법5: 구 XPath)")
+                    self.log("  ✓ More Filters 열림 (방법5: 구 XPath)")
                 except:
                     pass
 
-            # 방법 6: CSS 선택자로 button 전체 검색
             if not more_filters_clicked:
                 try:
                     buttons = self.driver.find_elements(By.TAG_NAME, 'button')
@@ -956,97 +964,90 @@ class ReviewCheckerGUI:
                             btn.click()
                             time.sleep(1)
                             more_filters_clicked = True
-                            print(f"  ✓ More Filters 열림 (방법6: 전체 버튼 검색)")
+                            self.log(f"  ✓ More Filters 열림 (방법6: 전체 버튼 검색)")
                             break
                 except:
                     pass
 
             if not more_filters_clicked:
-                print("  ⚠ More Filters 버튼 찾기 실패 - 날짜 필터 사용 불가")
-                print("  💡 현재 페이지의 모든 버튼 출력:")
-                try:
-                    buttons = self.driver.find_elements(By.TAG_NAME, 'button')
-                    for i, btn in enumerate(buttons[:10]):  # 처음 10개만
-                        print(f"     버튼{i + 1}: '{btn.text.strip()}'")
-                except:
-                    pass
+                self.log("  ⚠ More Filters 버튼 찾기 실패 - 날짜 필터 사용 불가")
+                return reviews
 
             # 날짜 필터 설정
-            if more_filters_clicked:
+            try:
+                calendar_btn = WebDriverWait(self.driver, 5).until(
+                    EC.element_to_be_clickable((By.XPATH, '//*[@id="date-range"]/span/span/span'))
+                )
+                calendar_btn.click()
+                time.sleep(1.5)
+
+                # ✅ 달 이동 함수(단순/안전하게: start_day가 이전달이면 prev, end_day가 다음달이면 next)
+                def click_prev_month():
+                    prev_month_btn = self.driver.find_element(By.XPATH, '//button[contains(@class, "p-datepicker-prev")]')
+                    prev_month_btn.click()
+                    time.sleep(0.5)
+
+                def click_next_month():
+                    next_month_btn = self.driver.find_element(By.XPATH, '//button[contains(@class, "p-datepicker-next")]')
+                    next_month_btn.click()
+                    time.sleep(0.5)
+
+                # start_day 선택 (이전 달이면 prev 한 번)
+                if start_day.month != date.month:
+                    try:
+                        click_prev_month()
+                        self.log(f"  ✓ 이전 달로 이동: {start_day.strftime('%Y-%m')}")
+                    except Exception as e:
+                        self.log(f"  ⚠ 이전 달 이동 실패: {e}")
+
                 try:
-                    prev_day = date - timedelta(days=1)
-
-                    # 캘린더 버튼 클릭
-                    calendar_btn = WebDriverWait(self.driver, 5).until(
-                        EC.element_to_be_clickable((By.XPATH, '//*[@id="date-range"]/span/span/span'))
+                    start_cells = self.driver.find_elements(
+                        By.XPATH,
+                        f'//span[@class="p-datepicker-day" and text()="{start_day.day}" and not(contains(@class, "p-disabled"))]'
                     )
-                    calendar_btn.click()
-                    time.sleep(1.5)
-
-                    # 월 변경이 필요한지 확인 (전날이 이전 달인 경우)
-                    if prev_day.month != date.month:
-                        try:
-                            # 이전 달로 이동
-                            prev_month_btn = self.driver.find_element(
-                                By.XPATH,
-                                '//button[contains(@class, "p-datepicker-prev")]'
-                            )
-                            prev_month_btn.click()
-                            time.sleep(0.5)
-                            print(f"  ✓ 이전 달로 이동: {prev_day.strftime('%Y-%m')}")
-                        except Exception as e:
-                            print(f"  ⚠ 이전 달 이동 실패: {e}")
-
-                    # 전날 선택 (활성화된 날짜만)
-                    try:
-                        prev_day_cells = self.driver.find_elements(
-                            By.XPATH,
-                            f'//span[@class="p-datepicker-day" and text()="{prev_day.day}" and not(contains(@class, "p-disabled"))]'
-                        )
-                        if prev_day_cells:
-                            prev_day_cells[0].click()
-                            time.sleep(0.5)
-                            print(f"  ✓ 시작일 선택: {prev_day.strftime('%Y-%m-%d')}")
-                        else:
-                            print(f"  ⚠ 전날 ({prev_day.day}일) 클릭 가능한 셀 없음")
-                    except Exception as e:
-                        print(f"  ⚠ 전날 선택 실패: {e}")
-
-                    # 다시 현재 달로 (필요시)
-                    if prev_day.month != date.month:
-                        try:
-                            next_month_btn = self.driver.find_element(
-                                By.XPATH,
-                                '//button[contains(@class, "p-datepicker-next")]'
-                            )
-                            next_month_btn.click()
-                            time.sleep(0.5)
-                            print(f"  ✓ 현재 달로 복귀: {date.strftime('%Y-%m')}")
-                        except:
-                            pass
-
-                    # 당일 선택
-                    try:
-                        curr_day_cells = self.driver.find_elements(
-                            By.XPATH,
-                            f'//span[@class="p-datepicker-day" and text()="{date.day}" and not(contains(@class, "p-disabled"))]'
-                        )
-                        if curr_day_cells:
-                            curr_day_cells[0].click()
-                            time.sleep(0.5)
-                            print(f"  ✓ 종료일 선택: {date_str}")
-                        else:
-                            print(f"  ⚠ 당일 ({date.day}일) 클릭 가능한 셀 없음")
-                    except Exception as e:
-                        print(f"  ⚠ 당일 선택 실패: {e}")
-
-                    # 필터 적용 대기
-                    time.sleep(5)
-
+                    if start_cells:
+                        start_cells[0].click()
+                        time.sleep(0.5)
+                        self.log(f"  ✓ 시작일 선택: {start_day.strftime('%Y-%m-%d')}")
+                    else:
+                        self.log(f"  ⚠ 시작일 ({start_day.day}일) 클릭 가능한 셀 없음")
                 except Exception as e:
-                    print(f"  ⚠ 날짜 필터 설정 실패: {e}")
-            else:
-                print("  ⚠ 날짜 필터 없이 진행 (전체 리뷰 검색)")
+                    self.log(f"  ⚠ 시작일 선택 실패: {e}")
+
+                # ✅ end_day가 다음달이면: (현재 달로 복귀 후) next로 이동
+                # - start_day가 이전달이었다면 지금 화면은 이전달일 수 있음 → 먼저 next로 현재달 복귀
+                if start_day.month != date.month:
+                    try:
+                        click_next_month()
+                        time.sleep(0.2)
+                    except:
+                        pass
+
+                if end_day.month != date.month:
+                    try:
+                        click_next_month()
+                        self.log(f"  ✓ 다음 달로 이동: {end_day.strftime('%Y-%m')}")
+                    except Exception as e:
+                        self.log(f"  ⚠ 다음 달 이동 실패: {e}")
+
+                try:
+                    end_cells = self.driver.find_elements(
+                        By.XPATH,
+                        f'//span[@class="p-datepicker-day" and text()="{end_day.day}" and not(contains(@class, "p-disabled"))]'
+                    )
+                    if end_cells:
+                        end_cells[0].click()
+                        time.sleep(0.5)
+                        self.log(f"  ✓ 종료일 선택: {end_day.strftime('%Y-%m-%d')}")
+                    else:
+                        self.log(f"  ⚠ 종료일 ({end_day.day}일) 클릭 가능한 셀 없음")
+                except Exception as e:
+                    self.log(f"  ⚠ 종료일 선택 실패: {e}")
+
+                time.sleep(5)
+
+            except Exception as e:
+                self.log(f"  ⚠ 날짜 필터 설정 실패: {e}")
 
             # 리뷰 수집
             page_num = 1
@@ -1067,7 +1068,7 @@ class ReviewCheckerGUI:
                         '//a[contains(@href, "booking") or contains(text(), "GYG")]'
                     )
 
-                    print(f"  → 페이지 {page_num}: {len(booking_elems)}개 예약번호 발견")
+                    self.log(f"  → 페이지 {page_num}: {len(booking_elems)}개 예약번호 발견")
 
                     for elem in booking_elems:
                         try:
@@ -1105,18 +1106,18 @@ class ReviewCheckerGUI:
                 except Exception:
                     break
 
-            print(f"  ✓ GG: {len(reviews)}개 리뷰 수집 완료")
+            self.log(f"  ✓ GG: {len(reviews)}개 리뷰 수집 완료")
             return reviews
 
         except Exception as e:
-            print(f"  ✗ GG 수집 실패: {e}")
+            self.log(f"  ✗ GG 수집 실패: {e}")
             import traceback
             traceback.print_exc()
             return reviews
 
     def check_kkday(self, booking_code, tour_date):
         try:
-            print(f"\n[KKDAY] {booking_code}")
+            self.log(f"\n[KKDAY] {booking_code}")
 
             self.driver.get("https://scm.kkday.com/v1/en/comment/index")
             time.sleep(2)
@@ -1128,7 +1129,7 @@ class ReviewCheckerGUI:
                 order_input.clear()
                 order_input.send_keys(booking_code)
             except:
-                print("  ✗ 입력란 찾기 실패")
+                self.log("  ✗ 입력란 찾기 실패")
                 return "ERROR", ""
 
             try:
@@ -1136,7 +1137,7 @@ class ReviewCheckerGUI:
                 search_btn.click()
                 time.sleep(3)
             except:
-                print("  ✗ 검색 버튼 클릭 실패")
+                self.log("  ✗ 검색 버튼 클릭 실패")
                 return "ERROR", ""
 
             try:
@@ -1154,18 +1155,18 @@ class ReviewCheckerGUI:
                     star_count = len(filled_stars)
 
                     if star_count > 0:
-                        print(f"  ✅ 리뷰 있음: {star_count}점")
+                        self.log(f"  ✅ 리뷰 있음: {star_count}점")
                         return "YES", str(star_count)
 
-                print(f"  ❌ 리뷰 없음")
+                self.log(f"  ❌ 리뷰 없음")
                 return "NO", ""
 
             except TimeoutException:
-                print(f"  ❌ 검색 결과 없음")
+                self.log(f"  ❌ 검색 결과 없음")
                 return "NO", ""
 
         except Exception as e:
-            print(f"  ✗ KKDAY 오류: {e}")
+            self.log(f"  ✗ KKDAY 오류: {e}")
             return "ERROR", ""
 
     def copy_results(self):
