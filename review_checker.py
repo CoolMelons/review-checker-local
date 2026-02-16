@@ -758,102 +758,183 @@ class ReviewCheckerGUI:
         return df
 
     def collect_klook_reviews(self, date):
+        """
+        ✅ 개선된 KLOOK 리뷰 수집 - 안정성 강화
+        """
         reviews = {}
         try:
             self.log(f"\n🔍 KLOOK 리뷰 수집 중... (날짜: {date.strftime('%Y-%m-%d')})")
 
             self.driver.get("https://merchant.klook.com/reviews")
-            time.sleep(2)
+            time.sleep(3)  # 초기 로딩
 
             try:
                 date_str = date.strftime("%Y-%m-%d")
 
-                product_dropdown = self.driver.find_element(
-                    By.XPATH,
-                    '//*[@id="klook-content"]/div/div[1]/div[1]/div/div[1]/form[2]/div[1]/div[2]/div/span'
+                # Product dropdown
+                product_dropdown = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH,
+                                                '//*[@id="klook-content"]/div/div[1]/div[1]/div/div[1]/form[2]/div[1]/div[2]/div/span'))
                 )
                 product_dropdown.click()
                 time.sleep(1)
 
+                # Participation time 선택
                 participation_options = self.driver.find_elements(
-                    By.XPATH,
-                    '//li[contains(text(), "Participation time")]'
+                    By.XPATH, '//li[contains(text(), "Participation time")]'
                 )
                 for opt in participation_options:
                     if "Participation time" in opt.text:
                         opt.click()
-                        time.sleep(0.5)
+                        time.sleep(1)  # 0.5 → 1초로 증가
                         break
 
                 from selenium.webdriver.common.keys import Keys
 
-                main_input = self.driver.find_element(
-                    By.XPATH,
-                    '//*[@id="klook-content"]/div/div[1]/div[1]/div/div[1]/form[2]/div[2]/div[2]/div/span/span/span/input[1]'
+                # 날짜 입력
+                main_input = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH,
+                                                '//*[@id="klook-content"]/div/div[1]/div[1]/div/div[1]/form[2]/div[2]/div[2]/div/span/span/span/input[1]'))
                 )
                 main_input.click()
                 time.sleep(1)
 
-                popup_start_input = WebDriverWait(self.driver, 5).until(
+                popup_start_input = WebDriverWait(self.driver, 10).until(
                     EC.presence_of_element_located(
                         (By.XPATH, '/html/body/div[3]/div/div/div/div/div[1]/div[1]/div[1]/div/input'))
                 )
                 popup_start_input.click()
                 popup_start_input.send_keys(Keys.CONTROL + 'a')
                 popup_start_input.send_keys(date_str)
-                time.sleep(0.3)
+                time.sleep(0.5)
 
                 popup_end_input = self.driver.find_element(
-                    By.XPATH,
-                    '/html/body/div[3]/div/div/div/div/div[1]/div[2]/div[1]/div/input'
+                    By.XPATH, '/html/body/div[3]/div/div/div/div/div[1]/div[2]/div[1]/div/input'
                 )
                 popup_end_input.click()
                 popup_end_input.send_keys(Keys.CONTROL + 'a')
                 popup_end_input.send_keys(date_str)
-                time.sleep(0.3)
+                time.sleep(0.5)
 
-                search_btn = WebDriverWait(self.driver, 5).until(
+                # Search 버튼
+                search_btn = WebDriverWait(self.driver, 10).until(
                     EC.element_to_be_clickable(
                         (By.XPATH, '//*[@id="klook-content"]/div/div[1]/div[1]/div/div[2]/button[1]'))
                 )
                 search_btn.click()
-                time.sleep(3)
+
+                # ✅ 검색 결과 로딩 대기 (중요!)
+                time.sleep(5)  # 3초 → 5초로 증가
+
+                # ✅ 테이블이 실제로 나타날 때까지 명시적 대기
+                WebDriverWait(self.driver, 15).until(
+                    EC.presence_of_element_located(
+                        (By.XPATH,
+                         '//*[@id="klook-content"]/div/div[2]/div/div/div/div/div/div/div/div/div/div/table/tbody/tr'))
+                )
+
+                # ✅ 페이지당 30개씩 표시하도록 설정
+                try:
+                    self.log("  ⚙️ 페이지당 30개씩 표시 설정 중...")
+
+                    # CSS Selector로 size-changer 클릭
+                    size_changer = WebDriverWait(self.driver, 8).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, ".ant-pagination-options-size-changer"))
+                    )
+                    self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", size_changer)
+                    time.sleep(0.2)
+                    size_changer.click()
+                    time.sleep(0.6)
+
+                    # 30 / page 옵션 선택 (role="option" 사용)
+                    opt_xpath = '//li[@role="option" and contains(normalize-space(.), "30 / page")]'
+                    option_30 = WebDriverWait(self.driver, 8).until(
+                        EC.element_to_be_clickable((By.XPATH, opt_xpath))
+                    )
+                    self.driver.execute_script("arguments[0].click();", option_30)
+                    time.sleep(1.0)
+
+                    # 테이블 다시 로딩 대기
+                    WebDriverWait(self.driver, 15).until(
+                        EC.presence_of_element_located(
+                            (By.XPATH,
+                             '//*[@id="klook-content"]/div/div[2]/div/div/div/div/div/div/div/div/div/div/table/tbody/tr'))
+                    )
+                    time.sleep(2)
+
+                    self.log("  ✓ 페이지당 30개씩 표시 설정 완료")
+
+                except Exception as e:
+                    self.log(f"  ⚠ 페이지 크기 설정 실패 (기본 10개 사용): {e}")
 
             except Exception as e:
                 self.log(f"  ⚠ 날짜 필터 설정 실패: {e}")
 
             page_num = 1
+            consecutive_empty_pages = 0  # ✅ 빈 페이지 카운터 추가
+
             while page_num <= 20:
                 try:
+                    # ✅ 페이지 로딩 완료 대기
+                    WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located(
+                            (By.XPATH,
+                             '//*[@id="klook-content"]/div/div[2]/div/div/div/div/div/div/div/div/div/div/table/tbody/tr'))
+                    )
+                    time.sleep(2)  # 추가 안정화 대기
+
                     rows = self.driver.find_elements(
                         By.XPATH,
                         '//*[@id="klook-content"]/div/div[2]/div/div/div/div/div/div/div/div/div/div/table/tbody/tr'
                     )
 
+                    # ✅ 빈 페이지 체크
+                    if len(rows) == 0:
+                        consecutive_empty_pages += 1
+                        if consecutive_empty_pages >= 2:
+                            self.log(f"  → 연속 빈 페이지 감지, 수집 종료")
+                            break
+                    else:
+                        consecutive_empty_pages = 0
+
+                    collected_in_page = 0  # ✅ 현재 페이지에서 수집한 리뷰 수
+
                     for row in rows:
                         try:
-                            code = row.find_element(By.XPATH, './td[1]/a').text.strip()
-                            rating_text = row.find_element(By.XPATH, './td[6]').text.strip()
+                            # ✅ 요소가 실제로 보일 때까지 대기
+                            code_elem = row.find_element(By.XPATH, './td[1]/a')
+                            rating_elem = row.find_element(By.XPATH, './td[6]')
 
-                            if code:
-                                reviews[code] = rating_text if rating_text.isdigit() else ""
+                            code = code_elem.text.strip()
+                            rating_text = rating_elem.text.strip()
+
+                            if code and code not in reviews:  # ✅ 중복 방지
+                                reviews[code] = rating_text if rating_text.replace('.', '').isdigit() else ""
+                                collected_in_page += 1
                         except:
                             continue
 
-                    self.log(f"  → 페이지 {page_num}: {len(rows)}개 리뷰")
+                    self.log(f"  → 페이지 {page_num}: {collected_in_page}개 리뷰 수집 (누적: {len(reviews)}개)")
 
+                    # ✅ 다음 페이지로 이동
                     try:
-                        next_btn = self.driver.find_element(
-                            By.XPATH,
-                            '//li[contains(@class, "ant-pagination-next") and not(contains(@class, "ant-pagination-disabled"))]/a'
+                        next_btn = WebDriverWait(self.driver, 5).until(
+                            EC.element_to_be_clickable(
+                                (By.XPATH,
+                                 '//li[contains(@class, "ant-pagination-next") and not(contains(@class, "ant-pagination-disabled"))]/a'))
                         )
-                        next_btn.click()
-                        time.sleep(2)
+
+                        # ✅ JavaScript 클릭 시도 (더 안정적)
+                        self.driver.execute_script("arguments[0].click();", next_btn)
+                        time.sleep(3)  # 2초 → 3초로 증가
                         page_num += 1
-                    except:
+
+                    except Exception as e:
+                        self.log(f"  → 마지막 페이지 도달")
                         break
 
-                except Exception:
+                except Exception as e:
+                    self.log(f"  ⚠ 페이지 {page_num} 처리 중 오류: {e}")
                     break
 
             self.log(f"  ✓ KLOOK: {len(reviews)}개 리뷰 수집 완료")
@@ -891,7 +972,8 @@ class ReviewCheckerGUI:
             end_day = date + timedelta(days=1)
 
             date_str = date.strftime('%Y-%m-%d')
-            self.log(f"\n🔍 GG 리뷰 수집 중... (기준 날짜: {date_str}, 범위: {start_day.strftime('%Y-%m-%d')} ~ {end_day.strftime('%Y-%m-%d')})")
+            self.log(
+                f"\n🔍 GG 리뷰 수집 중... (기준 날짜: {date_str}, 범위: {start_day.strftime('%Y-%m-%d')} ~ {end_day.strftime('%Y-%m-%d')})")
 
             self.driver.get("https://supplier.getyourguide.com/performance/reviews")
             time.sleep(3)
@@ -983,12 +1065,14 @@ class ReviewCheckerGUI:
 
                 # ✅ 달 이동 함수(단순/안전하게: start_day가 이전달이면 prev, end_day가 다음달이면 next)
                 def click_prev_month():
-                    prev_month_btn = self.driver.find_element(By.XPATH, '//button[contains(@class, "p-datepicker-prev")]')
+                    prev_month_btn = self.driver.find_element(By.XPATH,
+                                                              '//button[contains(@class, "p-datepicker-prev")]')
                     prev_month_btn.click()
                     time.sleep(0.5)
 
                 def click_next_month():
-                    next_month_btn = self.driver.find_element(By.XPATH, '//button[contains(@class, "p-datepicker-next")]')
+                    next_month_btn = self.driver.find_element(By.XPATH,
+                                                              '//button[contains(@class, "p-datepicker-next")]')
                     next_month_btn.click()
                     time.sleep(0.5)
 
