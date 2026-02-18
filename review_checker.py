@@ -1,7 +1,9 @@
 import os
 import sys
 import time
+import re
 import pandas as pd
+from decimal import Decimal, InvalidOperation
 from datetime import datetime, timedelta
 from tkinter import Tk, filedialog, Label, Button, Toplevel, StringVar, messagebox, Frame, Scrollbar, Canvas, \
     Checkbutton, BooleanVar
@@ -150,7 +152,6 @@ class ReviewCheckerGUI:
             print(line)
             self.detail_lines.append(line)
 
-            # GUI에도 append
             if hasattr(self, "result_text") and self.result_text is not None:
                 self.result_text.insert("end", line + "\n")
                 self.result_text.see("end")
@@ -175,23 +176,47 @@ class ReviewCheckerGUI:
                                  '--remote-debugging-port=9222')
 
     # =========================
-    # No Show 탭 처리 핵심
+    # No Show 탭/컬럼 처리 핵심 (✅ 수정됨)
     # =========================
+    def _norm_code(self, x):
+        """Agency Code를 안정적으로 문자열화 (큰 숫자/과학표기/끝 .0 처리)"""
+        s = str(x).strip()
+        if s.lower() in ["nan", "none"]:
+            return ""
+
+        # 12345.0 같은 형태
+        m = re.match(r"^(\d+)\.0$", s)
+        if m:
+            return m.group(1)
+
+        # 과학 표기 형태 (1.234e+15)
+        if re.match(r"^\d+(\.\d+)?e[+-]?\d+$", s, flags=re.IGNORECASE):
+            try:
+                d = Decimal(s)
+                s2 = format(d, "f")
+                return s2.split(".")[0]
+            except (InvalidOperation, ValueError):
+                return s
+
+        return s
+
     def load_excel_with_noshow(self, file_path: str):
         """
         엑셀 전체 시트를 읽고,
         - 본 데이터 시트(df_main)
-        - No Show 시트에서 'O'인 Agency Code들을 noshow_codes로 추출
+        - (1) No Show 시트가 있으면 'O'인 Agency Code들을 noshow_codes로 추출
+        - (2) ✅ No Show 시트가 없거나, 메인 시트에 'No Show' 컬럼이 있으면 그것도 함께 반영
         """
         xls = pd.read_excel(file_path, sheet_name=None)
 
         # 1) No Show 시트 찾기 (대소문자/공백 차이 대응)
         noshow_sheet_name = None
         for name in xls.keys():
-            if str(name).strip().lower() in ["no show", "noshow", "no_show", "no-show"]:
+            nm = str(name).strip().lower()
+            if nm in ["no show", "noshow", "no_show", "no-show"]:
                 noshow_sheet_name = name
                 break
-            if "no show" in str(name).strip().lower():
+            if "no show" in nm:
                 noshow_sheet_name = name
                 break
 
@@ -209,7 +234,11 @@ class ReviewCheckerGUI:
         df_main = xls[main_sheet_name].copy()
         df_main = self.normalize_columns(df_main)
 
-        # 3) No Show codes 추출
+        # ✅ Agency Code 문자열 정규화 (큰 숫자 대응)
+        if "Agency Code" in df_main.columns:
+            df_main["Agency Code"] = df_main["Agency Code"].apply(self._norm_code)
+
+        # 3) No Show codes 추출 (No Show 시트)
         noshow_codes = set()
         if noshow_sheet_name is not None:
             df_ns = xls[noshow_sheet_name].copy()
@@ -237,7 +266,7 @@ class ReviewCheckerGUI:
             if code_col is not None:
                 if flag_col is not None:
                     for _, r in df_ns.iterrows():
-                        code = str(r.get(code_col, "")).strip()
+                        code = self._norm_code(r.get(code_col, ""))
                         flag = str(r.get(flag_col, "")).strip().upper()
                         if not code:
                             continue
@@ -245,12 +274,30 @@ class ReviewCheckerGUI:
                             noshow_codes.add(code)
                 else:
                     for _, r in df_ns.iterrows():
-                        code = str(r.get(code_col, "")).strip()
+                        code = self._norm_code(r.get(code_col, ""))
                         if not code:
                             continue
                         row_text = " ".join([str(v) for v in r.values]).upper()
                         if " O " in f" {row_text} " or row_text.strip() == "O":
                             noshow_codes.add(code)
+
+        # 4) ✅ 메인 시트에 No Show 컬럼이 있으면 거기서도 추출 (핵심 수정!)
+        # 컬럼명 변형 대응: "No Show", "Noshow", "No_show", "No-Show" 등
+        main_cols_norm = {str(c): re.sub(r"[\s\-_]", "", str(c).strip().lower()) for c in df_main.columns}
+        noshow_main_col = None
+        for orig, norm in main_cols_norm.items():
+            if norm in ["noshow", "noshow(o)"]:
+                noshow_main_col = orig
+                break
+            if "noshow" in norm or ("no" in norm and "show" in norm):
+                noshow_main_col = orig
+                break
+
+        if noshow_main_col is not None and "Agency Code" in df_main.columns:
+            flags = df_main[noshow_main_col].astype(str).str.strip().str.upper()
+            main_noshow_codes = set(df_main.loc[flags == "O", "Agency Code"].apply(self._norm_code).tolist())
+            main_noshow_codes = set([c for c in main_noshow_codes if c])
+            noshow_codes |= main_noshow_codes  # ✅ 합치기
 
         return df_main, noshow_codes, main_sheet_name, noshow_sheet_name
 
@@ -292,7 +339,7 @@ class ReviewCheckerGUI:
             self.df = df
 
             ns_msg = ""
-            if noshow_sheet is not None:
+            if (noshow_sheet is not None) or (len(self.noshow_codes) > 0):
                 ns_msg = f" | No Show(O) 제외: {self.noshow_teams}팀 {self.noshow_people}명"
             self.file_status.set(f"✅ 파일 로드 완료: {len(df)}개 예약{ns_msg}")
 
@@ -332,7 +379,6 @@ class ReviewCheckerGUI:
         messagebox.showinfo("완료", f"{len(self.guide_groups)}개 가이드 그룹을 찾았습니다.\n(No Show O는 자동 제외됨)")
 
     def display_results(self, stats):
-        # ✅ 최종 출력은 "상세 로그 + 요약" 형태로 재구성
         self.result_text.delete(1.0, "end")
 
         out = []
@@ -493,7 +539,6 @@ class ReviewCheckerGUI:
                 return
 
         try:
-            # ✅ 시작 시 로그/창 초기화
             self.detail_lines = []
             self.result_text.delete(1.0, "end")
             self.log("📊 리뷰 조회 시작")
@@ -700,7 +745,6 @@ class ReviewCheckerGUI:
 
             progress_window.window.destroy()
 
-            # ✅ 최종: 상세 로그 + 통계 함께 출력
             self.display_results(stats)
 
             if stats['reviewed_total'] > 0:
@@ -758,20 +802,16 @@ class ReviewCheckerGUI:
         return df
 
     def collect_klook_reviews(self, date):
-        """
-        ✅ 개선된 KLOOK 리뷰 수집 - 안정성 강화
-        """
         reviews = {}
         try:
             self.log(f"\n🔍 KLOOK 리뷰 수집 중... (날짜: {date.strftime('%Y-%m-%d')})")
 
             self.driver.get("https://merchant.klook.com/reviews")
-            time.sleep(3)  # 초기 로딩
+            time.sleep(3)
 
             try:
                 date_str = date.strftime("%Y-%m-%d")
 
-                # Product dropdown
                 product_dropdown = WebDriverWait(self.driver, 10).until(
                     EC.element_to_be_clickable((By.XPATH,
                                                 '//*[@id="klook-content"]/div/div[1]/div[1]/div/div[1]/form[2]/div[1]/div[2]/div/span'))
@@ -779,19 +819,17 @@ class ReviewCheckerGUI:
                 product_dropdown.click()
                 time.sleep(1)
 
-                # Participation time 선택
                 participation_options = self.driver.find_elements(
                     By.XPATH, '//li[contains(text(), "Participation time")]'
                 )
                 for opt in participation_options:
                     if "Participation time" in opt.text:
                         opt.click()
-                        time.sleep(1)  # 0.5 → 1초로 증가
+                        time.sleep(1)
                         break
 
                 from selenium.webdriver.common.keys import Keys
 
-                # 날짜 입력
                 main_input = WebDriverWait(self.driver, 10).until(
                     EC.element_to_be_clickable((By.XPATH,
                                                 '//*[@id="klook-content"]/div/div[1]/div[1]/div/div[1]/form[2]/div[2]/div[2]/div/span/span/span/input[1]'))
@@ -816,28 +854,23 @@ class ReviewCheckerGUI:
                 popup_end_input.send_keys(date_str)
                 time.sleep(0.5)
 
-                # Search 버튼
                 search_btn = WebDriverWait(self.driver, 10).until(
                     EC.element_to_be_clickable(
                         (By.XPATH, '//*[@id="klook-content"]/div/div[1]/div[1]/div/div[2]/button[1]'))
                 )
                 search_btn.click()
 
-                # ✅ 검색 결과 로딩 대기 (중요!)
-                time.sleep(5)  # 3초 → 5초로 증가
+                time.sleep(5)
 
-                # ✅ 테이블이 실제로 나타날 때까지 명시적 대기
                 WebDriverWait(self.driver, 15).until(
                     EC.presence_of_element_located(
                         (By.XPATH,
                          '//*[@id="klook-content"]/div/div[2]/div/div/div/div/div/div/div/div/div/div/table/tbody/tr'))
                 )
 
-                # ✅ 페이지당 30개씩 표시하도록 설정
                 try:
                     self.log("  ⚙️ 페이지당 30개씩 표시 설정 중...")
 
-                    # CSS Selector로 size-changer 클릭
                     size_changer = WebDriverWait(self.driver, 8).until(
                         EC.element_to_be_clickable((By.CSS_SELECTOR, ".ant-pagination-options-size-changer"))
                     )
@@ -846,7 +879,6 @@ class ReviewCheckerGUI:
                     size_changer.click()
                     time.sleep(0.6)
 
-                    # 30 / page 옵션 선택 (role="option" 사용)
                     opt_xpath = '//li[@role="option" and contains(normalize-space(.), "30 / page")]'
                     option_30 = WebDriverWait(self.driver, 8).until(
                         EC.element_to_be_clickable((By.XPATH, opt_xpath))
@@ -854,7 +886,6 @@ class ReviewCheckerGUI:
                     self.driver.execute_script("arguments[0].click();", option_30)
                     time.sleep(1.0)
 
-                    # 테이블 다시 로딩 대기
                     WebDriverWait(self.driver, 15).until(
                         EC.presence_of_element_located(
                             (By.XPATH,
@@ -871,24 +902,22 @@ class ReviewCheckerGUI:
                 self.log(f"  ⚠ 날짜 필터 설정 실패: {e}")
 
             page_num = 1
-            consecutive_empty_pages = 0  # ✅ 빈 페이지 카운터 추가
+            consecutive_empty_pages = 0
 
             while page_num <= 20:
                 try:
-                    # ✅ 페이지 로딩 완료 대기
                     WebDriverWait(self.driver, 10).until(
                         EC.presence_of_element_located(
                             (By.XPATH,
                              '//*[@id="klook-content"]/div/div[2]/div/div/div/div/div/div/div/div/div/div/table/tbody/tr'))
                     )
-                    time.sleep(2)  # 추가 안정화 대기
+                    time.sleep(2)
 
                     rows = self.driver.find_elements(
                         By.XPATH,
                         '//*[@id="klook-content"]/div/div[2]/div/div/div/div/div/div/div/div/div/div/table/tbody/tr'
                     )
 
-                    # ✅ 빈 페이지 체크
                     if len(rows) == 0:
                         consecutive_empty_pages += 1
                         if consecutive_empty_pages >= 2:
@@ -897,18 +926,17 @@ class ReviewCheckerGUI:
                     else:
                         consecutive_empty_pages = 0
 
-                    collected_in_page = 0  # ✅ 현재 페이지에서 수집한 리뷰 수
+                    collected_in_page = 0
 
                     for row in rows:
                         try:
-                            # ✅ 요소가 실제로 보일 때까지 대기
                             code_elem = row.find_element(By.XPATH, './td[1]/a')
                             rating_elem = row.find_element(By.XPATH, './td[6]')
 
                             code = code_elem.text.strip()
                             rating_text = rating_elem.text.strip()
 
-                            if code and code not in reviews:  # ✅ 중복 방지
+                            if code and code not in reviews:
                                 reviews[code] = rating_text if rating_text.replace('.', '').isdigit() else ""
                                 collected_in_page += 1
                         except:
@@ -916,7 +944,6 @@ class ReviewCheckerGUI:
 
                     self.log(f"  → 페이지 {page_num}: {collected_in_page}개 리뷰 수집 (누적: {len(reviews)}개)")
 
-                    # ✅ 다음 페이지로 이동
                     try:
                         next_btn = WebDriverWait(self.driver, 5).until(
                             EC.element_to_be_clickable(
@@ -924,12 +951,11 @@ class ReviewCheckerGUI:
                                  '//li[contains(@class, "ant-pagination-next") and not(contains(@class, "ant-pagination-disabled"))]/a'))
                         )
 
-                        # ✅ JavaScript 클릭 시도 (더 안정적)
                         self.driver.execute_script("arguments[0].click();", next_btn)
-                        time.sleep(3)  # 2초 → 3초로 증가
+                        time.sleep(3)
                         page_num += 1
 
-                    except Exception as e:
+                    except Exception:
                         self.log(f"  → 마지막 페이지 도달")
                         break
 
@@ -957,17 +983,11 @@ class ReviewCheckerGUI:
             return reviews
 
     def collect_gg_reviews(self, date):
-        """
-        ✅ GG 리뷰 수집
-        - More Filters 열기 시도 여러 방식 유지
-        - ✅ 날짜 범위를 (date-1) ~ (date+1) 로 변경 (-1, +1)
-        """
         reviews = {}
         try:
             if hasattr(date, 'to_pydatetime'):
                 date = date.to_pydatetime()
 
-            # ✅ -1 / +1 범위로 변경
             start_day = date - timedelta(days=1)
             end_day = date + timedelta(days=1)
 
@@ -1055,7 +1075,6 @@ class ReviewCheckerGUI:
                 self.log("  ⚠ More Filters 버튼 찾기 실패 - 날짜 필터 사용 불가")
                 return reviews
 
-            # 날짜 필터 설정
             try:
                 calendar_btn = WebDriverWait(self.driver, 5).until(
                     EC.element_to_be_clickable((By.XPATH, '//*[@id="date-range"]/span/span/span'))
@@ -1063,7 +1082,6 @@ class ReviewCheckerGUI:
                 calendar_btn.click()
                 time.sleep(1.5)
 
-                # ✅ 달 이동 함수(단순/안전하게: start_day가 이전달이면 prev, end_day가 다음달이면 next)
                 def click_prev_month():
                     prev_month_btn = self.driver.find_element(By.XPATH,
                                                               '//button[contains(@class, "p-datepicker-prev")]')
@@ -1076,7 +1094,6 @@ class ReviewCheckerGUI:
                     next_month_btn.click()
                     time.sleep(0.5)
 
-                # start_day 선택 (이전 달이면 prev 한 번)
                 if start_day.month != date.month:
                     try:
                         click_prev_month()
@@ -1098,8 +1115,6 @@ class ReviewCheckerGUI:
                 except Exception as e:
                     self.log(f"  ⚠ 시작일 선택 실패: {e}")
 
-                # ✅ end_day가 다음달이면: (현재 달로 복귀 후) next로 이동
-                # - start_day가 이전달이었다면 지금 화면은 이전달일 수 있음 → 먼저 next로 현재달 복귀
                 if start_day.month != date.month:
                     try:
                         click_next_month()
@@ -1133,7 +1148,6 @@ class ReviewCheckerGUI:
             except Exception as e:
                 self.log(f"  ⚠ 날짜 필터 설정 실패: {e}")
 
-            # 리뷰 수집
             page_num = 1
             while page_num <= 10:
                 try:
