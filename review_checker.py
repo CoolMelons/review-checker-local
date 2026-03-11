@@ -315,9 +315,10 @@ class ReviewCheckerGUI:
 
         try:
             df, noshow_codes, main_sheet, noshow_sheet = self.load_excel_with_noshow(file_path)
-
             df = df[df["Area"].astype(str).str.strip().str.lower() == "seoul"].copy()
-
+            
+            df = df[df["Main Guide"].notna() & (df["Main Guide"].astype(str).str.strip() != "")].copy()
+            
             df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
             df["Agency"] = df["Agency"].astype(str).str.strip()
             df["Agency Code"] = df["Agency Code"].astype(str).str.strip()
