@@ -23,9 +23,14 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
+    - name: Verify selenium install
+      run: |
+        python -c "import selenium; print(selenium.__version__)"
+        python -c "from selenium.webdriver.chrome.webdriver import WebDriver; print('OK')"
+
     - name: Build EXE
       run: |
-        pyinstaller --onefile --windowed --name "ReviewChecker" --hidden-import selenium --hidden-import selenium.webdriver --hidden-import selenium.webdriver.chrome --hidden-import selenium.webdriver.chrome.webdriver --hidden-import selenium.webdriver.chrome.options --hidden-import selenium.webdriver.common.by --hidden-import selenium.webdriver.support.ui --hidden-import selenium.webdriver.support.expected_conditions --hidden-import selenium.common.exceptions review_checker.py
+        pyinstaller --onefile --windowed --name "ReviewChecker" --collect-all selenium --collect-all pandas --collect-all openpyxl --hidden-import selenium.webdriver.chrome.webdriver --hidden-import selenium.webdriver.chrome.options --hidden-import selenium.webdriver.common.by --hidden-import selenium.webdriver.support.ui --hidden-import selenium.webdriver.support.expected_conditions --hidden-import selenium.common.exceptions review_checker.py
 
     - name: Rename EXE with version
       run: |
