@@ -1,16 +1,13 @@
 name: Build and Auto-Update ReviewChecker
-
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: windows-latest
     permissions:
-      contents: write  # 릴리즈 생성/수정 권한
-
+      contents: write
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -28,10 +25,8 @@ jobs:
 
     - name: Build EXE
       run: |
-        pyinstaller --onefile --windowed --name "ReviewChecker" review_checker.py
+        pyinstaller --onefile --windowed --name "ReviewChecker" --hidden-import selenium --hidden-import selenium.webdriver --hidden-import selenium.webdriver.chrome --hidden-import selenium.webdriver.chrome.webdriver --hidden-import selenium.webdriver.chrome.options --hidden-import selenium.webdriver.common.by --hidden-import selenium.webdriver.support.ui --hidden-import selenium.webdriver.support.expected_conditions --hidden-import selenium.common.exceptions review_checker.py
 
-    # ✅ (1번 방식) run_number로 자동 버전 증가: v1, v2, v3...
-    # 파일도 같이 버전명으로 바꿔서 릴리즈/아티팩트에 올라가게 함
     - name: Rename EXE with version
       run: |
         ren dist\ReviewChecker.exe ReviewChecker_v${{ github.run_number }}.exe
